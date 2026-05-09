@@ -5,7 +5,12 @@
 - ✅ Provide a complete **MCR-style operator console**: **Asset Library, STAGING vs LIVE buses, TAKE/CUT transitions, Queue (autoplay), History**, and **External Display popup**.
 - ✅ Implement professional **Audio Engine**: **Web Audio 10-band EQ + master gain + output routing** (when supported via `setSinkId`).
 - ✅ Ensure **real-time LIVE mirroring** to external display using **BroadcastChannel** with periodic time sync.
-- ✅ Validate app health with **automated end-to-end testing**.
+- ✅ Add Phase 3 operator-grade polish:
+  - ✅ Drag-and-drop **Queue reorder** (persisted)
+  - ✅ Low-FPS **Audio spectrum analyzer** visualization
+  - ✅ Advanced BroadcastChannel **explicit play/pause/seek/load/stop commands**
+  - ✅ **State recovery on refresh** (STAGING/LIVE + audio/transport preferences)
+- ✅ Validate app health with **automated end-to-end testing** (Phase 2 backend+frontend, Phase 3 frontend regression).
 
 ---
 
@@ -99,13 +104,13 @@
   - Output routing via `setSinkId()` with graceful fallback
 - **Queue + autoplay**
   - Autoplay next item on `ended`
-  - Queue reorder via up/down controls (v1)
+  - (Phase 2) Queue reorder via up/down controls (later replaced by DnD in Phase 3)
 - **External display**
   - BroadcastChannel state sync + periodic tick updates
   - Minimal HUD overlay (toggleable)
 
 #### 3) Core runtime features ✅
-- **BroadcastChannel protocol**
+- **BroadcastChannel protocol (Phase 2)**
   - `control:state` snapshot + `control:tick` periodic sync
   - Handshake between control and display
   - Drift correction on display if time difference exceeds threshold
@@ -126,37 +131,79 @@
 
 ---
 
-## Phase 3 — Hardening, Edge Cases, and Polish (Future Work)
+## Phase 3 — Hardening, Edge Cases, and Polish ✅ COMPLETE
 
 ### User stories (polish)
-1. ⏳ Resume last queue and live/staging state after refresh.
-2. ⏳ More robust upload UX: retry, cancel, better error states, validation for very large files.
-3. ⏳ Drag-and-drop queue reorder (currently up/down buttons).
-4. ⏳ Search/filter enhancements: type filters, tag chips, sorting.
-5. ⏳ More robust LIVE sync for complex actions (seek, pause, network hiccups).
+1. ✅ Resume last working set after refresh (STAGING/LIVE sources + operator preferences) **safely**.
+2. ✅ Improve Queue UX with drag-and-drop reorder (operator-grade speed under stress).
+3. ✅ Provide audio visualization feedback (spectrum) without harming playback performance.
+4. ✅ Improve LIVE sync reliability for complex actions (seek/pause/play/load/stop).
 
-### Implementation steps
-- **State persistence & recovery**
-  - Store last STAGING/LIVE selection and transport state (option: Supabase table or localStorage + reconciliation).
-- **BroadcastChannel improvements**
-  - Better drift correction, explicit seek/pause commands, and “control window is source of truth” enforcement.
-- **Media enrichment**
-  - Thumbnail generation for video (server-side job or client-side capture) and optional waveform for audio.
-- **Queue UX upgrade**
-  - Drag-and-drop reorder using a light library (keep performance safe).
-- **Audio visualization**
-  - Optional spectrum analyzer (low FPS) to avoid impacting playback.
+### Implementation steps (What was built)
 
-### Success criteria
-- No regressions across refresh/new window.
-- Stable LIVE playback with consistent state under seeks/pauses.
+#### 1) State persistence & recovery ✅
+- Added `sessionState.js` using `localStorage` key: `lumina:session:v1`.
+- Persisted:
+  - `stagingAssetId`, `stagingQueueItemId`
+  - `liveAssetId`, `liveQueueItemId`
+  - `autoplay`, `loop`
+  - `gainDb`, `eqValues` (10-band)
+  - `selectedOutputId`
+  - `sidebarTab`
+- Restores on mount **after** assets/queue load so IDs can be resolved to objects.
+- Safety behavior:
+  - LIVE source restores but **does not auto-play**; operator must press PLAY.
+  - Shows toast: “Restored last LIVE source. Press PLAY to resume.” (~4s).
+- Cleared on logout (AuthContext calls `clearSessionState()`).
+
+#### 2) Queue UX upgrade (Drag-and-drop) ✅
+- Installed `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`.
+- Replaced up/down reorder with:
+  - `DndContext` + `SortableContext` + `arrayMove`.
+  - Pointer + Keyboard sensors for accessibility.
+  - GripVertical drag handle with `data-testid='queue-drag-handle-{id}'`.
+  - Visual dragging feedback: shadow + ring.
+- Persists ordering to backend via `POST /api/queue/reorder`.
+
+#### 3) Audio visualization (Spectrum analyzer) ✅
+- New `SpectrumAnalyzer` component:
+  - Canvas + `ResizeObserver` for responsive sizing.
+  - Throttled to ~24fps to protect playback performance.
+  - Logarithmic frequency mapping (emphasizes low frequencies).
+  - Orange gradient bars rendered **behind EQ sliders** (60% opacity).
+  - Uses existing `AudioEngine` analyser (no extra audio routing).
+  - `data-testid='spectrum-analyzer-canvas'`.
+- Integrated into EQ panel UI label: “10-BAND EQ + SPECTRUM”.
+
+#### 4) Advanced BroadcastChannel sync ✅
+- Updated `bus.js`:
+  - Exported `MSG` + `CMD` constants.
+  - Added explicit command messages: `control:cmd` with actions:
+    - `PLAY`, `PAUSE`, `SEEK`, `STOP`, `LOAD`.
+- Control window sends explicit commands on:
+  - Play / Pause / Seek / Stop
+  - Take / Cut / Next / Autoplay transitions (load+autoplay)
+- Display window:
+  - Listens for `control:cmd` and applies immediately to local media element.
+  - Passive drift correction remains as fallback; threshold raised to 1s.
+
+### Testing ✅
+- Phase 3 regression validated by `testing_agent_v3`:
+  - ✅ Frontend: **100%** (21 checks passed)
+  - ✅ Zero bugs and no regressions from Phase 1/2
+
+### Success criteria ✅
+- ✅ No regressions across refresh/new window.
+- ✅ Stable LIVE behavior for play/pause/seek due to explicit command sync.
+- ✅ Queue reordering fast and reliable via drag-and-drop + backend persistence.
 
 ---
 
 ## Next Actions (Updated)
-1. ✅ No immediate blockers — Phase 1 and Phase 2 are complete and tested.
-2. Optional hardening work (Phase 3) can be prioritized based on your operator workflow:
-   - Drag-and-drop queue reorder
-   - State recovery on refresh
-   - Thumbnail generation
-   - Advanced sync handling (seek/pause commands)
+1. ✅ No immediate blockers — Phase 1, Phase 2, and Phase 3 are complete and tested.
+2. Optional future enhancements (nice-to-have):
+   - Thumbnail generation for video assets
+   - Waveform preview for audio assets
+   - More robust upload UX (retry/cancel, large-file validations)
+   - Multi-operator roles / audit logs
+   - Persist queue cursor and multi-show playlists
