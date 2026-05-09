@@ -1,110 +1,162 @@
 # plan.md — Lumina Asset Suite (MCR Web App)
 
-## Objectives
-- Prove the **core flow** works end-to-end: **Supabase Auth + Supabase DB + Cloudflare R2 presigned upload + public playback URL**.
-- Build v1 MCR-style app: **Asset Library, Staging vs Live, Queue (autoplay), History, External Display popup**, plus **Web Audio 10-band EQ, master gain, output routing**.
-- Ensure **reliable LIVE sync** between control window and external display using **BroadcastChannel**.
+## Objectives (Updated)
+- ✅ Deliver a production-ready **end-to-end workflow**: **Supabase Auth + Supabase DB (RLS) + Cloudflare R2 presigned upload + public playback URL**.
+- ✅ Provide a complete **MCR-style operator console**: **Asset Library, STAGING vs LIVE buses, TAKE/CUT transitions, Queue (autoplay), History**, and **External Display popup**.
+- ✅ Implement professional **Audio Engine**: **Web Audio 10-band EQ + master gain + output routing** (when supported via `setSinkId`).
+- ✅ Ensure **real-time LIVE mirroring** to external display using **BroadcastChannel** with periodic time sync.
+- ✅ Validate app health with **automated end-to-end testing**.
 
 ---
 
-## Phase 1 — Core POC (Isolation: Supabase + R2)
+## Phase 1 — Core POC (Isolation: Supabase + R2) ✅ COMPLETE
 
 ### User stories (POC)
-1. As an operator, I can sign up and log in using email/password.
-2. As an operator, I can request a presigned URL and upload a media file securely.
-3. As an operator, I can access the uploaded file via a stable public URL.
-4. As an operator, I can create an asset record in the database referencing the uploaded media.
-5. As an operator, I can query back my assets and confirm persistence.
+1. ✅ As an operator, I can sign up and log in using email/password.
+2. ✅ As an operator, I can request a presigned URL and upload a media file securely.
+3. ✅ As an operator, I can access the uploaded file via a stable public URL.
+4. ✅ As an operator, I can create an asset record in the database referencing the uploaded media.
+5. ✅ As an operator, I can query back my assets and confirm persistence.
 
-### Implementation steps
-1. **Web research (best practices)**
-   - Confirm Cloudflare R2 S3 signing requirements (endpoint, region=auto, signature v4) and CORS guidance.
-   - Confirm Supabase Auth server-side verification best practices (JWT verify vs Supabase client calls).
-2. **Supabase setup (once)**
-   - Create tables: `assets`, `queues`, `queue_items`, `history` (owner/user scoping).
-   - Enable RLS + policies (owner can CRUD; service role bypass for backend).
-3. **POC scripts (Python, standalone)**
-   - Script A: signup/login → receive access token.
-   - Script B: generate presigned PUT (or POST) for R2 → upload test file → verify HEAD/GET via `R2_PUBLIC_URL`.
-   - Script C: insert asset row into Supabase → query list back.
-4. **Fix-until-works loop**
-   - Resolve CORS, content-type, ACL/public access expectations, URL correctness.
-   - Validate DB writes under RLS (either via service role in backend or user JWT + policies).
+### Implementation steps (What was done)
+1. ✅ **Supabase setup (once)**
+   - Created tables: `assets`, `queue_items`, `history`.
+   - Enabled RLS + policies so users can CRUD their own rows.
+   - Added `updated_at` trigger for `assets`.
+2. ✅ **R2 setup**
+   - Configured presigned PUT generation using boto3 (S3v4, region `auto`).
+   - Configured **bucket CORS** to allow browser direct PUT uploads.
+   - Verified public access via `R2_PUBLIC_URL`.
+3. ✅ **POC scripts (Python)**
+   - Auth + R2 upload + DB insert/query roundtrip.
+   - End-to-end test passed (upload → store metadata → query → public GET).
+4. ✅ **Fix-until-works loop**
+   - Email confirmation requirement addressed by using Supabase Admin API for auto-confirm.
 
 ### Deliverables
-- Working POC scripts with documented env usage.
-- Verified: upload → public playback URL → DB record roundtrip.
+- ✅ Supabase schema created (tables + RLS policies).
+- ✅ Verified: upload → public playback URL → DB record roundtrip.
 
 ### Success criteria
-- 100% reproducible run: `python poc.py` uploads a file, returns a working public URL, inserts and reads asset record.
+- ✅ 100% reproducible POC achieved.
 
 ---
 
-## Phase 2 — V1 App Development (Full Stack MVP)
+## Phase 2 — V1 App Development (Full Stack MVP) ✅ COMPLETE
 
 ### User stories (v1)
-1. As an operator, I can upload video/audio into my Library with title, type, duration, tags.
-2. As an operator, I can load any asset into **STAGING** to preview and QC before broadcast.
-3. As an operator, I can **TAKE/TRANSITION** STAGING to **LIVE** and it appears on the External Display.
-4. As an operator, I can build a **Queue** and enable **autoplay** to play items sequentially.
-5. As an operator, I can adjust **master gain** and **10-band EQ** and hear the change live.
-6. As an operator, I can choose an **audio output device** for LIVE playback when supported.
-7. As an operator, I can open an **External Display** window that shows only LIVE output.
-8. As an operator, I can review **History** of what went LIVE and when.
+1. ✅ Upload video/audio into Library with metadata.
+2. ✅ Load any asset into **STAGING** for preview/QC.
+3. ✅ **TAKE/CUT transition** STAGING → LIVE and mirror to External Display.
+4. ✅ Build a **Queue** and enable **autoplay**.
+5. ✅ Adjust **master gain** and **10-band EQ** and hear changes live (Web Audio).
+6. ✅ Choose **audio output device** for LIVE playback when supported.
+7. ✅ Open **External Display** window showing only LIVE content + minimal HUD.
+8. ✅ Review **History** of playback/transition events.
 
-### Implementation steps
-1. **Backend (FastAPI)**
-   - Auth: integrate Supabase email/password via Supabase Auth endpoints; backend verifies JWT for protected APIs.
-   - R2: endpoint to generate presigned upload URL; store object key and final `public_url`.
-   - CRUD endpoints:
-     - `POST /api/assets/upload-url`, `POST /api/assets`, `GET /api/assets`, `DELETE /api/assets/:id`
-     - `POST /api/queue`, `POST /api/queue/items`, `PATCH /api/queue/items/reorder`, `DELETE /api/queue/items/:id`
-     - `POST /api/history`, `GET /api/history`
-   - Use Supabase service role server-side for DB ops, enforce user ownership in queries.
-2. **Frontend (React + Tailwind + shadcn/ui)**
-   - Technical dark UI (carbon black, orange accents), Bento grid layout.
-   - Pages/routes: `/login`, `/app` (MCR), `/display` (external).
-   - MCR layout:
-     - Left sidebar: Library / Queue / History.
-     - Center: STAGING and LIVE players side-by-side + TAKE button.
-     - Bottom deck: transport controls, timecode/progress, master gain, EQ, output selector.
-3. **Core runtime features**
-   - **BroadcastChannel** protocol: state snapshot + periodic time sync; reconcile drift in display.
-   - **Web Audio**: media element → gain → 10 biquad filters → destination; bypass toggle; presets.
-   - **Output routing**: `setSinkId()` when supported; graceful fallback.
-   - Queue autoplay: on `ended` advance to next; persist queue state to DB.
-4. **Incremental test pass (end of phase)**
-   - Run testing agent: login → upload → staging preview → TAKE → open display → autoplay queue → EQ/gain.
-   - Fix critical UX or sync issues before moving on.
+### Implementation steps (What was built)
+
+#### 1) Backend (FastAPI) ✅
+- **Auth** (Supabase Auth integration)
+  - `POST /api/auth/signup` (auto-confirms email via admin API, returns session tokens)
+  - `POST /api/auth/login`
+  - `GET /api/auth/me`
+  - `POST /api/auth/logout` (stateless acknowledgment)
+- **Assets**
+  - `POST /api/assets/upload-url` → presigned PUT + `r2_key` + `public_url`
+  - `POST /api/assets` create metadata record
+  - `GET /api/assets` list (scoped to user)
+  - `PATCH /api/assets/{id}` update metadata
+  - `DELETE /api/assets/{id}` delete DB row + best-effort delete in R2
+- **Queue**
+  - `GET /api/queue` list with embedded asset metadata
+  - `POST /api/queue` add
+  - `POST /api/queue/reorder` reorder by `item_ids`
+  - `DELETE /api/queue/{id}` remove
+  - `DELETE /api/queue` clear
+- **History**
+  - `POST /api/history` record
+  - `GET /api/history` list (sorted desc)
+  - `DELETE /api/history` clear
+
+#### 2) Frontend (React + Tailwind + shadcn/ui) ✅
+- **Routes**
+  - `/login` and `/signup` (operator-grade dark UI)
+  - `/app` (protected MCR control room)
+  - `/display` (external display output)
+- **MCR layout**
+  - TopBar: branding, OFF AIR/ON AIR indicator, Pop-out Display button, user menu
+  - Sidebar: Library / Queue / History tabs
+  - Center: STAGING bus ↔ TAKE/CUT ↔ LIVE bus
+  - Bottom Control Deck: transport controls + scrub timeline + EQ + master fader + output routing
+- **Asset upload**
+  - Direct browser PUT to R2 using presigned URL
+  - Create asset metadata in Supabase via backend
+- **Audio Engine**
+  - Web Audio chain: media element → EQ filters → GainNode → destination
+  - 10-band EQ (lowshelf + peaking + highshelf)
+  - Master gain in dB
+  - Output routing via `setSinkId()` with graceful fallback
+- **Queue + autoplay**
+  - Autoplay next item on `ended`
+  - Queue reorder via up/down controls (v1)
+- **External display**
+  - BroadcastChannel state sync + periodic tick updates
+  - Minimal HUD overlay (toggleable)
+
+#### 3) Core runtime features ✅
+- **BroadcastChannel protocol**
+  - `control:state` snapshot + `control:tick` periodic sync
+  - Handshake between control and display
+  - Drift correction on display if time difference exceeds threshold
+- **Resilience**
+  - Safe fallbacks when `setSinkId` unsupported
+  - Browser gesture requirement respected (TAKE/play triggers audio context resume)
+
+#### 4) Incremental test pass ✅
+- Completed comprehensive test suite with `testing_agent_v3`:
+  - ✅ Backend: **20/20** tests passed
+  - ✅ Frontend: all required user stories verified
+  - ✅ No critical bugs detected
 
 ### Success criteria
-- Operator can run complete workflow without errors: upload → staging → take live → external display mirrors live → queue autoplay works.
-- Audio controls (gain + EQ) audibly affect playback; no crashes when output routing unsupported.
+- ✅ Operator can run complete workflow without errors:
+  - upload → preview staging → TAKE live → external display mirrors live → queue autoplay works.
+- ✅ Audio controls affect playback; no crashes if output routing unsupported.
 
 ---
 
-## Phase 3 — Hardening, Edge Cases, and Polish
+## Phase 3 — Hardening, Edge Cases, and Polish (Future Work)
 
 ### User stories (polish)
-1. As an operator, I can resume my last queue and live/staging state after refresh.
-2. As an operator, I see clear errors for failed uploads and can retry safely.
-3. As an operator, I can reorder the queue via drag-and-drop without breaking autoplay.
-4. As an operator, I can quickly search/filter Library by type/tags.
-5. As an operator, I can trust LIVE sync stays stable even after lag/seek/pause events.
+1. ⏳ Resume last queue and live/staging state after refresh.
+2. ⏳ More robust upload UX: retry, cancel, better error states, validation for very large files.
+3. ⏳ Drag-and-drop queue reorder (currently up/down buttons).
+4. ⏳ Search/filter enhancements: type filters, tag chips, sorting.
+5. ⏳ More robust LIVE sync for complex actions (seek, pause, network hiccups).
 
 ### Implementation steps
-- Add robust state persistence + recovery (queue cursor, last live asset, last staging asset).
-- Improve BroadcastChannel sync: drift correction, seek handling, leader election (control window as source of truth).
-- Better upload UX: progress, cancel, validation (size/type), thumbnail/waveform placeholder.
-- History enrichment: duration played, manual vs autoplay, operator notes.
-- E2E test round with testing agent; fix regressions.
+- **State persistence & recovery**
+  - Store last STAGING/LIVE selection and transport state (option: Supabase table or localStorage + reconciliation).
+- **BroadcastChannel improvements**
+  - Better drift correction, explicit seek/pause commands, and “control window is source of truth” enforcement.
+- **Media enrichment**
+  - Thumbnail generation for video (server-side job or client-side capture) and optional waveform for audio.
+- **Queue UX upgrade**
+  - Drag-and-drop reorder using a light library (keep performance safe).
+- **Audio visualization**
+  - Optional spectrum analyzer (low FPS) to avoid impacting playback.
 
 ### Success criteria
-- No critical regressions across refresh/new window; stable LIVE playback with consistent state.
+- No regressions across refresh/new window.
+- Stable LIVE playback with consistent state under seeks/pauses.
 
 ---
 
-## Next Actions (Immediate)
-1. Implement Phase 1 POC scripts and Supabase schema + RLS.
-2. Validate R2 presigned upload + public GET works for both video and audio.
-3. Once Phase 1 is green, proceed to Phase 2 full-stack build in minimal large commits.
+## Next Actions (Updated)
+1. ✅ No immediate blockers — Phase 1 and Phase 2 are complete and tested.
+2. Optional hardening work (Phase 3) can be prioritized based on your operator workflow:
+   - Drag-and-drop queue reorder
+   - State recovery on refresh
+   - Thumbnail generation
+   - Advanced sync handling (seek/pause commands)
