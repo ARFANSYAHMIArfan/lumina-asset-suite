@@ -1,0 +1,58 @@
+[
+  {
+    "content": "Phase 1: Get Supabase integration playbook",
+    "status": "in_progress"
+  },
+  {
+    "content": "Phase 1: Get Cloudflare R2 integration playbook",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 1: Setup Supabase database schema (assets, queue, history tables)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 1: Setup .env files with credentials",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 1: Create POC test script (Supabase auth + R2 upload + DB CRUD)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 1: Run POC and fix until all tests pass",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Get design guidelines from design_agent",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Build backend (FastAPI + Supabase + R2 endpoints)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Build frontend (Login, MCR Layout, External Display)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Implement BroadcastChannel sync between control & display",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Implement Web Audio API (10-band EQ + Master Gain + Output Routing)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Implement Queue management with autoplay",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: End-to-end testing with testing_agent_v3",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Fix all bugs found in testing",
+    "status": "pending"
+  }
+]
