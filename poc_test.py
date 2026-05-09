@@ -71,44 +71,35 @@ def test_supabase_auth():
     print_header("TEST 1: Supabase Auth (Signup + Login)")
 
     try:
-        # Create client with anon key for auth flows
-        client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        # Use admin client (service role) to create + auto-confirm user (no email verification needed)
+        admin_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        # Anon client to test login flow (as a real user would)
+        anon_client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
         print_info(f"Supabase URL: {SUPABASE_URL}")
         print_info(f"Test email: {TEST_EMAIL}")
 
-        # Sign up
-        signup_response = client.auth.sign_up({
+        # Create user with email_confirm=True (admin API bypasses email verification)
+        create_response = admin_client.auth.admin.create_user({
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+            "email_confirm": True,
+        })
+        if create_response.user is None:
+            print_error("Admin create_user returned no user")
+            return None
+        user_id = create_response.user.id
+        print_success(f"User created (email auto-confirmed). User ID: {user_id}")
+
+        # Now test login flow as a real user would
+        login_response = anon_client.auth.sign_in_with_password({
             "email": TEST_EMAIL,
             "password": TEST_PASSWORD,
         })
-        if signup_response.user is None:
-            print_error("Signup returned no user")
+        if login_response.session is None:
+            print_error("Login did not return session")
             return None
-        user_id = signup_response.user.id
-        print_success(f"Signup successful. User ID: {user_id}")
-
-        # Note: by default Supabase requires email confirmation. For POC we use sign_in_with_password
-        # which works as long as email confirmation is disabled in project settings,
-        # OR we need to handle the case where user is unconfirmed.
-        # For the test script, we'll rely on the signed up session if available.
-        access_token = None
-        if signup_response.session:
-            access_token = signup_response.session.access_token
-            print_success(f"Session token obtained directly from signup (email auto-confirm)")
-        else:
-            # Try to login (works only if email auto-confirm is enabled)
-            try:
-                login_response = client.auth.sign_in_with_password({
-                    "email": TEST_EMAIL,
-                    "password": TEST_PASSWORD,
-                })
-                if login_response.session:
-                    access_token = login_response.session.access_token
-                    print_success("Login successful")
-                else:
-                    print_error("Login did not return session")
-            except Exception as e:
-                print_error(f"Login failed (likely email confirmation required): {e}")
+        access_token = login_response.session.access_token
+        print_success(f"Login successful (token: {access_token[:20]}...)")
 
         return {"user_id": user_id, "access_token": access_token, "email": TEST_EMAIL}
 
