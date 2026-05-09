@@ -148,6 +148,19 @@ function EQPanel({ eqValues, onChangeBand, onResetEq, getSpectrumData }) {
 }
 
 function OutputRouting({ outputDevices, selectedOutputId, onSelectOutput, supported }) {
+  // Filter out devices with empty deviceId (Radix Select forbids empty values).
+  // Browsers may return such entries when permissions haven't been granted.
+  const safeDevices = outputDevices.filter((d) => d.deviceId && d.deviceId.length > 0);
+  const hasDefault = safeDevices.some((d) => d.deviceId === 'default');
+  // Always include a synthetic 'default' entry so the operator has a safe fallback.
+  const renderableDevices = hasDefault
+    ? safeDevices
+    : [{ deviceId: 'default', label: 'System default', kind: 'audiooutput' }, ...safeDevices];
+  // Make sure the current selectedOutputId actually exists; otherwise fall back to 'default'.
+  const effectiveSelected = renderableDevices.find((d) => d.deviceId === selectedOutputId)
+    ? selectedOutputId
+    : 'default';
+
   return (
     <div
       className="flex h-full flex-col gap-2 rounded-xl border border-border/80 bg-card p-3"
@@ -156,14 +169,14 @@ function OutputRouting({ outputDevices, selectedOutputId, onSelectOutput, suppor
       <div className="flex items-center gap-1.5">
         <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">AUDIO OUTPUT</span>
       </div>
-      <Select value={selectedOutputId} onValueChange={onSelectOutput} disabled={!supported}>
+      <Select value={effectiveSelected} onValueChange={onSelectOutput} disabled={!supported}>
         <SelectTrigger className="h-9 bg-background border-border/70" data-testid="audio-output-device-select">
           <SelectValue placeholder={supported ? 'Select device' : 'Not supported'} />
         </SelectTrigger>
         <SelectContent className="bg-card border-border/80">
-          {outputDevices.map((d) => (
+          {renderableDevices.map((d) => (
             <SelectItem key={d.deviceId} value={d.deviceId} className="font-mono text-xs">
-              {d.label || `Device ${d.deviceId.substring(0, 6)}…`}
+              {d.label || (d.deviceId === 'default' ? 'System default' : `Device ${d.deviceId.substring(0, 6)}…`)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -176,7 +189,7 @@ function OutputRouting({ outputDevices, selectedOutputId, onSelectOutput, suppor
       <div className="mt-auto rounded-md border border-border/70 bg-background px-2 py-1.5">
         <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground">DEVICES</p>
         <p className="font-mono text-xs tabular-nums text-foreground">
-          {outputDevices.length} found
+          {renderableDevices.length} found
         </p>
       </div>
     </div>
