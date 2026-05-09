@@ -25,43 +25,47 @@
   },
   {
     "content": "Phase 2: Setup R2 CORS policy for browser PUT uploads",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Get design guidelines from design_agent",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Build backend (FastAPI + Supabase auth + R2 endpoints + Queue + History)",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Build frontend - Login/Signup page",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Build frontend - MCR Layout (Sidebar + Staging/Live + Control Deck)",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Build frontend - External Display popup with BroadcastChannel sync",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Implement Web Audio API (10-band EQ + Master Gain + Output Routing)",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Implement Asset Library upload + management",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Implement Queue management with autoplay",
-    "status": "pending"
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: All user stories covered in development",
+    "status": "completed"
   },
   {
     "content": "Phase 2: End-to-end testing with testing_agent_v3",
-    "status": "pending"
+    "status": "in_progress"
   },
   {
     "content": "Phase 2: Fix all bugs found in testing",
