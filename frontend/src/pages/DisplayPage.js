@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createBus } from '../lib/bus';
+import { createBus, MSG, CMD } from '../lib/bus';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatTimecode } from '../lib/format';
 import { Disc, Radio } from 'lucide-react';
@@ -18,16 +18,22 @@ export default function DisplayPage() {
   const [hudVisible, setHudVisible] = useState(true);
   const [connected, setConnected] = useState(false);
 
+  // Helper to get current media element based on current asset
+  const getEl = (assetType) => (assetType === 'video' ? videoRef.current : audioRef.current);
+
   useEffect(() => {
     const bus = createBus();
     busRef.current = bus;
+
     const off = bus.addListener((data) => {
       if (!data) return;
-      if (data.type === 'control:state') {
+
+      if (data.type === MSG.CONTROL_STATE) {
         setState((prev) => ({ ...prev, ...data.payload }));
         setConnected(true);
       }
-      if (data.type === 'control:tick') {
+
+      if (data.type === MSG.CONTROL_TICK) {
         setState((prev) => ({
           ...prev,
           currentTime: data.payload.currentTime,
@@ -35,38 +41,83 @@ export default function DisplayPage() {
           duration: data.payload.duration ?? prev.duration,
         }));
       }
-      if (data.type === 'control:hello') {
-        bus.postMessage({ type: 'display:hello', ts: Date.now() });
+
+      if (data.type === MSG.CONTROL_HELLO) {
+        bus.postMessage({ type: MSG.DISPLAY_HELLO, ts: Date.now() });
         setConnected(true);
       }
+
+      if (data.type === MSG.CONTROL_CMD) {
+        // Explicit playback commands take priority over passive sync
+        const action = data.payload?.action;
+        const assetType = data.payload?.assetType;
+        const el = getEl(assetType);
+        if (!el) return;
+
+        try {
+          if (action === CMD.PLAY) {
+            el.play().catch(() => {});
+          } else if (action === CMD.PAUSE) {
+            el.pause();
+          } else if (action === CMD.STOP) {
+            el.pause();
+            try { el.currentTime = 0; } catch {}
+          } else if (action === CMD.SEEK) {
+            const t = data.payload?.time;
+            if (typeof t === 'number' && isFinite(t)) {
+              try { el.currentTime = t; } catch {}
+            }
+          } else if (action === CMD.LOAD) {
+            // After load, play if needed
+            try { el.currentTime = 0; } catch {}
+            if (data.payload?.autoplay) {
+              el.play().catch(() => {});
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     });
-    bus.postMessage({ type: 'display:hello', ts: Date.now() });
+
+    bus.postMessage({ type: MSG.DISPLAY_HELLO, ts: Date.now() });
     const beacon = setInterval(() => {
-      bus.postMessage({ type: 'display:hello', ts: Date.now() });
+      bus.postMessage({ type: MSG.DISPLAY_HELLO, ts: Date.now() });
     }, 5000);
+
+    const onBeforeUnload = () => {
+      try {
+        bus.postMessage({ type: MSG.DISPLAY_BYE, ts: Date.now() });
+      } catch {}
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
     return () => {
       try {
-        bus.postMessage({ type: 'display:bye', ts: Date.now() });
+        bus.postMessage({ type: MSG.DISPLAY_BYE, ts: Date.now() });
       } catch {}
       clearInterval(beacon);
+      window.removeEventListener('beforeunload', onBeforeUnload);
       off?.();
       bus.close();
     };
   }, []);
 
-  // Sync media element to control state
+  // Passive drift correction: only when drift > 1s and we did NOT just receive a seek command.
+  // This is a fallback to keep display in sync if a tick was missed.
   useEffect(() => {
-    const isVideo = state.liveAsset?.type === 'video';
+    if (!state.liveAsset) return;
+    const isVideo = state.liveAsset.type === 'video';
     const el = isVideo ? videoRef.current : audioRef.current;
-    if (!el || !state.liveAsset) return;
-    // Sync time if drift > 0.6s
+    if (!el) return;
+    // Sync time if drift > 1s
     const drift = Math.abs((el.currentTime || 0) - (state.currentTime || 0));
-    if (drift > 0.6 && isFinite(state.currentTime)) {
+    if (drift > 1.0 && isFinite(state.currentTime)) {
       try {
         el.currentTime = state.currentTime;
       } catch {}
     }
-    // Play/pause
+    // Reflect play/pause as a fallback (commands handle the primary path)
     if (state.isPlaying && el.paused) {
       el.play().catch(() => {});
     } else if (!state.isPlaying && !el.paused) {

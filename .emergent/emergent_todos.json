@@ -1,74 +1,30 @@
 [
   {
-    "content": "Phase 1: Get Supabase integration playbook",
+    "content": "Phase 3: Install @dnd-kit for drag-and-drop",
     "status": "completed"
   },
   {
-    "content": "Phase 1: Get Cloudflare R2 integration playbook",
+    "content": "Phase 3: Implement drag-and-drop queue reorder",
     "status": "completed"
   },
   {
-    "content": "Phase 1: Setup Supabase database schema (assets, queue, history tables)",
+    "content": "Phase 3: Implement audio spectrum analyzer canvas visualization",
     "status": "completed"
   },
   {
-    "content": "Phase 1: Setup .env files with credentials",
+    "content": "Phase 3: Advanced BroadcastChannel sync (explicit play/pause/seek commands)",
     "status": "completed"
   },
   {
-    "content": "Phase 1: Create POC test script (Supabase auth + R2 upload + DB CRUD)",
+    "content": "Phase 3: State recovery on refresh (persist STAGING/LIVE/transport state)",
     "status": "completed"
   },
   {
-    "content": "Phase 1: Run POC and fix until all tests pass",
-    "status": "completed"
+    "content": "Phase 3: End-to-end testing with testing_agent_v3",
+    "status": "in_progress"
   },
   {
-    "content": "Phase 2: Setup R2 CORS policy for browser PUT uploads",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Get design guidelines from design_agent",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Build backend (FastAPI + Supabase auth + R2 endpoints + Queue + History)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Build frontend - Login/Signup page",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Build frontend - MCR Layout (Sidebar + Staging/Live + Control Deck)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Build frontend - External Display popup with BroadcastChannel sync",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Implement Web Audio API (10-band EQ + Master Gain + Output Routing)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Implement Asset Library upload + management",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Implement Queue management with autoplay",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: All user stories covered in development",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: End-to-end testing with testing_agent_v3 (PASSED 100%)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Fix all bugs found in testing (No bugs found)",
-    "status": "completed"
+    "content": "Phase 3: Fix any bugs found",
+    "status": "pending"
   }
 ]

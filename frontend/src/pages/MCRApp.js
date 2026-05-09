@@ -14,8 +14,9 @@ import {
   apiListAssets, apiListQueue, apiListHistory, apiAddHistory,
   apiRemoveFromQueue,
 } from '../lib/api';
-import { createBus } from '../lib/bus';
+import { createBus, MSG, CMD } from '../lib/bus';
 import { AudioEngine, EQ_BANDS, computePeakDb } from '../lib/audioEngine';
+import { loadSessionState, saveSessionState } from '../lib/sessionState';
 import { toast } from 'sonner';
 
 export default function MCRApp() {
@@ -23,6 +24,7 @@ export default function MCRApp() {
   const [assets, setAssets] = useState([]);
   const [queue, setQueue] = useState([]);
   const [history, setHistory] = useState([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // ========== Bus state ==========
   const [stagingAsset, setStagingAsset] = useState(null);
@@ -31,7 +33,7 @@ export default function MCRApp() {
   const [liveQueueItemId, setLiveQueueItemId] = useState(null);
   const [autoplay, setAutoplay] = useState(true);
 
-  // ========== Live playback state (the focused player is LIVE) ==========
+  // ========== Live playback state ==========
   const [isLive, setIsLive] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
   const [takePulse, setTakePulse] = useState(false);
@@ -63,6 +65,11 @@ export default function MCRApp() {
   // ========== Sidebar tab ==========
   const [sidebarTab, setSidebarTab] = useState('library');
 
+  // ========== Spectrum data for visualizer ==========
+  const getSpectrumData = useCallback(() => {
+    return audioEngineRef.current.getFrequencyData();
+  }, []);
+
   // ========== Load initial data ==========
   const reloadAssets = useCallback(async () => {
     try {
@@ -91,11 +98,79 @@ export default function MCRApp() {
     }
   }, []);
 
+  // Load session state from localStorage on mount
   useEffect(() => {
-    reloadAssets();
-    reloadQueue();
-    reloadHistory();
+    const session = loadSessionState();
+    if (session) {
+      if (typeof session.autoplay === 'boolean') setAutoplay(session.autoplay);
+      if (typeof session.loop === 'boolean') setLoop(session.loop);
+      if (typeof session.gainDb === 'number') setGainDb(session.gainDb);
+      if (Array.isArray(session.eqValues) && session.eqValues.length === EQ_BANDS.length) {
+        setEqValues(session.eqValues);
+      }
+      if (session.selectedOutputId) setSelectedOutputId(session.selectedOutputId);
+      if (session.sidebarTab) setSidebarTab(session.sidebarTab);
+    }
+  }, []);
+
+  // Initial data fetch
+  useEffect(() => {
+    (async () => {
+      await Promise.all([reloadAssets(), reloadQueue(), reloadHistory()]);
+      setDataLoaded(true);
+    })();
   }, [reloadAssets, reloadQueue, reloadHistory]);
+
+  // After data loaded, restore STAGING/LIVE asset references from session
+  useEffect(() => {
+    if (!dataLoaded) return;
+    const session = loadSessionState();
+    if (!session) return;
+
+    if (session.stagingAssetId) {
+      const asset = assets.find((a) => a.id === session.stagingAssetId);
+      if (asset) {
+        setStagingAsset(asset);
+        // Also restore the queue item id if it still exists
+        if (session.stagingQueueItemId && queue.find((q) => q.id === session.stagingQueueItemId)) {
+          setStagingQueueItemId(session.stagingQueueItemId);
+        }
+      }
+    }
+    if (session.liveAssetId) {
+      const asset = assets.find((a) => a.id === session.liveAssetId);
+      if (asset) {
+        setLiveAsset(asset);
+        if (session.liveQueueItemId && queue.find((q) => q.id === session.liveQueueItemId)) {
+          setLiveQueueItemId(session.liveQueueItemId);
+        }
+        // Don't auto-resume LIVE on refresh - operator must explicitly press play
+        // We just restore the source ready to play. Show a soft toast to inform.
+        toast.info('Restored last LIVE source. Press PLAY to resume.', { duration: 4000 });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataLoaded]);
+
+  // Persist session state on relevant changes
+  useEffect(() => {
+    if (!dataLoaded) return;
+    saveSessionState({
+      stagingAssetId: stagingAsset?.id || null,
+      stagingQueueItemId,
+      liveAssetId: liveAsset?.id || null,
+      liveQueueItemId,
+      autoplay,
+      loop,
+      gainDb,
+      eqValues,
+      selectedOutputId,
+      sidebarTab,
+    });
+  }, [
+    dataLoaded, stagingAsset, stagingQueueItemId, liveAsset, liveQueueItemId,
+    autoplay, loop, gainDb, eqValues, selectedOutputId, sidebarTab,
+  ]);
 
   // ========== Load output devices ==========
   const refreshOutputDevices = useCallback(async () => {
@@ -122,16 +197,15 @@ export default function MCRApp() {
     const bus = createBus();
     busRef.current = bus;
     const off = bus.addListener((data) => {
-      if (data?.type === 'display:hello') {
+      if (data?.type === MSG.DISPLAY_HELLO) {
         setHasDisplayWindow(true);
-        // Re-send full state so display can sync
         broadcastState();
       }
-      if (data?.type === 'display:bye') {
+      if (data?.type === MSG.DISPLAY_BYE) {
         setHasDisplayWindow(false);
       }
     });
-    bus.postMessage({ type: 'control:hello', ts: Date.now() });
+    bus.postMessage({ type: MSG.CONTROL_HELLO, ts: Date.now() });
     return () => {
       off?.();
       bus.close();
@@ -141,7 +215,7 @@ export default function MCRApp() {
 
   const broadcastState = useCallback(() => {
     busRef.current?.postMessage({
-      type: 'control:state',
+      type: MSG.CONTROL_STATE,
       ts: Date.now(),
       payload: {
         liveAsset,
@@ -160,13 +234,21 @@ export default function MCRApp() {
     broadcastState();
   }, [liveAsset, isLive, broadcastState]);
 
+  // Broadcast explicit command
+  const sendCmd = useCallback((action, payload = {}) => {
+    busRef.current?.postMessage({
+      type: MSG.CONTROL_CMD,
+      ts: Date.now(),
+      payload: { action, assetType: liveAsset?.type, ...payload },
+    });
+  }, [liveAsset]);
+
   // ========== Audio engine connect to LIVE element ==========
   useEffect(() => {
     const el = liveRef.current;
     if (!el) return;
     const eng = audioEngineRef.current;
     eng.connect(el);
-    // Sync state
     eng.setMasterGainDb(gainDb);
     eqValues.forEach((v, i) => eng.setEqBand(i, v));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,7 +262,6 @@ export default function MCRApp() {
       const td = eng.getTimeDomainData();
       if (td) {
         const peak = computePeakDb(td);
-        // Apply gain to estimated peak
         setPeakDb(isFinite(peak) ? peak + gainDb : -Infinity);
       }
       raf = requestAnimationFrame(tick);
@@ -203,7 +284,7 @@ export default function MCRApp() {
     if (!hasDisplayWindow) return;
     const id = setInterval(() => {
       busRef.current?.postMessage({
-        type: 'control:tick',
+        type: MSG.CONTROL_TICK,
         ts: Date.now(),
         payload: {
           currentTime: liveRef.current?.currentTime || 0,
@@ -257,10 +338,10 @@ export default function MCRApp() {
       toast.error('Nothing in STAGING to take');
       return;
     }
-    // Resume audio context on first interaction (browser policy)
     audioEngineRef.current.ensureContext();
 
-    setLiveAsset(stagingAsset);
+    const newLive = stagingAsset;
+    setLiveAsset(newLive);
     setLiveQueueItemId(stagingQueueItemId);
     setStagingAsset(null);
     setStagingQueueItemId(null);
@@ -270,12 +351,15 @@ export default function MCRApp() {
     setTimeout(() => setTakePulse(false), 250);
     setTimeout(() => setIsPulsing(false), 700);
 
+    // Notify display: load new source + autoplay
+    sendCmd(CMD.LOAD, { autoplay: true, asset: newLive });
+
     // Record history
     try {
       await apiAddHistory({
-        asset_id: stagingAsset.id,
-        asset_title: stagingAsset.title,
-        asset_type: stagingAsset.type,
+        asset_id: newLive.id,
+        asset_title: newLive.title,
+        asset_type: newLive.type,
         source: 'transition',
       });
       reloadHistory();
@@ -293,7 +377,7 @@ export default function MCRApp() {
         }
       }
     }, 100);
-  }, [stagingAsset, stagingQueueItemId, reloadHistory]);
+  }, [stagingAsset, stagingQueueItemId, reloadHistory, sendCmd]);
 
   const handleCut = useCallback(async () => {
     if (!stagingAsset) {
@@ -301,17 +385,20 @@ export default function MCRApp() {
       return;
     }
     audioEngineRef.current.ensureContext();
-    setLiveAsset(stagingAsset);
+    const newLive = stagingAsset;
+    setLiveAsset(newLive);
     setLiveQueueItemId(stagingQueueItemId);
     setStagingAsset(null);
     setStagingQueueItemId(null);
     setIsLive(true);
 
+    sendCmd(CMD.LOAD, { autoplay: true, asset: newLive });
+
     try {
       await apiAddHistory({
-        asset_id: stagingAsset.id,
-        asset_title: stagingAsset.title,
-        asset_type: stagingAsset.type,
+        asset_id: newLive.id,
+        asset_title: newLive.title,
+        asset_type: newLive.type,
         source: 'transition',
       });
       reloadHistory();
@@ -326,7 +413,7 @@ export default function MCRApp() {
         } catch {}
       }
     }, 50);
-  }, [stagingAsset, stagingQueueItemId, reloadHistory]);
+  }, [stagingAsset, stagingQueueItemId, reloadHistory, sendCmd]);
 
   // ========== Transport handlers ==========
   const handlePlay = async () => {
@@ -337,27 +424,31 @@ export default function MCRApp() {
     audioEngineRef.current.ensureContext();
     try {
       await liveRef.current?.play();
+      sendCmd(CMD.PLAY);
     } catch (e) {
       toast.error(`Cannot play: ${e.message}`);
     }
   };
   const handlePause = () => {
     liveRef.current?.pause();
+    sendCmd(CMD.PAUSE);
   };
   const handleStop = () => {
     if (!liveRef.current) return;
     liveRef.current.pause();
     liveRef.current.currentTime = 0;
     setIsLive(false);
+    sendCmd(CMD.STOP);
   };
   const handleSeek = (t) => {
     if (!liveRef.current) return;
-    liveRef.current.currentTime = Math.max(0, Math.min(t, duration || 0));
+    const time = Math.max(0, Math.min(t, duration || 0));
+    liveRef.current.currentTime = time;
+    sendCmd(CMD.SEEK, { time });
   };
 
   // Skip controls advance the queue's playhead through staging->take cycle
   const handleNext = async () => {
-    // Find next queue item after the current LIVE one (or first one)
     if (queue.length === 0) {
       toast.info('Queue is empty');
       return;
@@ -374,14 +465,13 @@ export default function MCRApp() {
     }
     if (!nextItem?.asset) return;
     previewToStaging(nextItem.asset, nextItem.id);
-    // Auto-take after a brief delay to give visual feedback
     setTimeout(() => {
-      // Use a synchronous take by replicating handleTake inline
       setLiveAsset(nextItem.asset);
       setLiveQueueItemId(nextItem.id);
       setStagingAsset(null);
       setStagingQueueItemId(null);
       setIsLive(true);
+      sendCmd(CMD.LOAD, { autoplay: true, asset: nextItem.asset });
       apiAddHistory({
         asset_id: nextItem.asset.id,
         asset_title: nextItem.asset.title,
@@ -426,6 +516,8 @@ export default function MCRApp() {
       try {
         liveRef.current.currentTime = 0;
         await liveRef.current.play();
+        sendCmd(CMD.SEEK, { time: 0 });
+        sendCmd(CMD.PLAY);
       } catch {}
       return;
     }
@@ -446,7 +538,6 @@ export default function MCRApp() {
 
     // Autoplay next from queue
     if (autoplay && queue.length > 0) {
-      // Find next item after current
       let nextIdx = 0;
       if (liveQueueItemId) {
         const idx = queue.findIndex((q) => q.id === liveQueueItemId);
@@ -455,17 +546,16 @@ export default function MCRApp() {
       if (nextIdx < queue.length) {
         const next = queue[nextIdx];
         if (next?.asset) {
-          // Optional: remove the just-played item from queue
           if (liveQueueItemId) {
             try { await apiRemoveFromQueue(liveQueueItemId); } catch {}
             await reloadQueue();
           }
-          // Set new live
           setLiveAsset(next.asset);
           setLiveQueueItemId(next.id);
           setStagingAsset(null);
           setStagingQueueItemId(null);
           setIsLive(true);
+          sendCmd(CMD.LOAD, { autoplay: true, asset: next.asset });
           setTimeout(async () => {
             const el = liveRef.current;
             if (el) {
@@ -481,9 +571,8 @@ export default function MCRApp() {
       }
     }
 
-    // No more items - go off air
     setIsLive(false);
-  }, [loop, autoplay, queue, liveQueueItemId, liveAsset, duration, reloadHistory, reloadQueue]);
+  }, [loop, autoplay, queue, liveQueueItemId, liveAsset, duration, reloadHistory, reloadQueue, sendCmd]);
 
   // ========== Pop out display ==========
   const handlePopOut = useCallback(() => {
@@ -534,7 +623,6 @@ export default function MCRApp() {
               <QueuePanel
                 queue={queue}
                 currentItemId={liveQueueItemId}
-                onPreview={onPreviewAsset}
                 onLoadStaging={onLoadQueueItemToStaging}
                 onChanged={reloadQueue}
                 autoplay={autoplay}
@@ -614,6 +702,7 @@ export default function MCRApp() {
               selectedOutputId={selectedOutputId}
               onSelectOutput={onSelectOutput}
               sinkIdSupported={sinkIdSupported}
+              getSpectrumData={getSpectrumData}
             />
           </div>
         </main>

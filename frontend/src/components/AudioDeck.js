@@ -1,8 +1,9 @@
 import React from 'react';
 import { Slider } from './ui/slider';
-import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
+import { Volume2, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { EQ_BANDS } from '../lib/audioEngine';
+import SpectrumAnalyzer from './SpectrumAnalyzer';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui/select';
@@ -87,7 +88,7 @@ function VuMeter({ peakDb }) {
   );
 }
 
-function EQPanel({ eqValues, onChangeBand, onResetEq }) {
+function EQPanel({ eqValues, onChangeBand, onResetEq, getSpectrumData }) {
   const minDb = -12;
   const maxDb = 12;
   return (
@@ -98,6 +99,7 @@ function EQPanel({ eqValues, onChangeBand, onResetEq }) {
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">10-BAND EQ</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70">+ SPECTRUM</span>
         </div>
         <Button
           size="sm"
@@ -109,30 +111,37 @@ function EQPanel({ eqValues, onChangeBand, onResetEq }) {
           <RotateCcw className="h-3 w-3" /> Reset
         </Button>
       </div>
-      <div className="grid flex-1 grid-cols-10 gap-1.5">
-        {EQ_BANDS.map((hz, i) => (
-          <div key={hz} className="flex flex-col items-center gap-1">
-            <span
-              className="font-mono text-[9px] tabular-nums text-foreground/80"
-              data-testid={`eq-band-${hz}-value`}
-            >
-              {eqValues[i] >= 0 ? '+' : ''}{eqValues[i].toFixed(0)}
-            </span>
-            <Slider
-              orientation="vertical"
-              value={[eqValues[i]]}
-              min={minDb}
-              max={maxDb}
-              step={0.5}
-              onValueChange={(v) => onChangeBand(i, v[0])}
-              className="h-20 w-2 [&_[data-slot=track]]:bg-white/10 [&_[data-slot=range]]:bg-[#2EE59D] [&_[data-slot=thumb]]:h-3 [&_[data-slot=thumb]]:w-3 [&_[data-slot=thumb]]:bg-[#2EE59D]"
-              data-testid={`eq-band-${hz}-slider`}
-            />
-            <span className="font-mono text-[9px] uppercase text-muted-foreground">
-              {formatHz(hz)}
-            </span>
-          </div>
-        ))}
+
+      {/* Spectrum visualization sits behind the sliders */}
+      <div className="relative">
+        <div className="absolute inset-x-0 top-0 z-0 h-[112px] overflow-hidden rounded-md opacity-60">
+          <SpectrumAnalyzer getData={getSpectrumData} height={112} barCount={48} />
+        </div>
+        <div className="relative z-10 grid flex-1 grid-cols-10 gap-1.5">
+          {EQ_BANDS.map((hz, i) => (
+            <div key={hz} className="flex flex-col items-center gap-1">
+              <span
+                className="font-mono text-[9px] tabular-nums text-foreground/80"
+                data-testid={`eq-band-${hz}-value`}
+              >
+                {eqValues[i] >= 0 ? '+' : ''}{eqValues[i].toFixed(0)}
+              </span>
+              <Slider
+                orientation="vertical"
+                value={[eqValues[i]]}
+                min={minDb}
+                max={maxDb}
+                step={0.5}
+                onValueChange={(v) => onChangeBand(i, v[0])}
+                className="h-20 w-2 [&_[data-slot=track]]:bg-white/10 [&_[data-slot=range]]:bg-[#2EE59D] [&_[data-slot=thumb]]:h-3 [&_[data-slot=thumb]]:w-3 [&_[data-slot=thumb]]:bg-[#2EE59D]"
+                data-testid={`eq-band-${hz}-slider`}
+              />
+              <span className="font-mono text-[9px] uppercase text-muted-foreground">
+                {formatHz(hz)}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -178,6 +187,7 @@ export default function AudioDeck({
   gainDb, onGainChange, peakDb,
   eqValues, onChangeBand, onResetEq,
   outputDevices, selectedOutputId, onSelectOutput, sinkIdSupported,
+  getSpectrumData,
 }) {
   return (
     <div className="grid grid-cols-12 gap-3" data-testid="audio-deck">
@@ -185,7 +195,7 @@ export default function AudioDeck({
         <MasterFader gainDb={gainDb} onChange={onGainChange} peakDb={peakDb} />
       </div>
       <div className="col-span-7 min-h-[180px]">
-        <EQPanel eqValues={eqValues} onChangeBand={onChangeBand} onResetEq={onResetEq} />
+        <EQPanel eqValues={eqValues} onChangeBand={onChangeBand} onResetEq={onResetEq} getSpectrumData={getSpectrumData} />
       </div>
       <div className="col-span-3 min-h-[180px]">
         <OutputRouting

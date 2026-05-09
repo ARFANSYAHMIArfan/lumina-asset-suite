@@ -107,6 +107,16 @@ export class AudioEngine {
     return buf;
   }
 
+  // Convenience: returns a fresh frequency-domain buffer reused across calls.
+  getFrequencyData() {
+    if (!this.analyser) return null;
+    if (!this._freqBuf || this._freqBuf.length !== this.analyser.frequencyBinCount) {
+      this._freqBuf = new Uint8Array(this.analyser.frequencyBinCount);
+    }
+    this.analyser.getByteFrequencyData(this._freqBuf);
+    return this._freqBuf;
+  }
+
   getTimeDomainData() {
     if (!this.analyser) return null;
     const buf = new Uint8Array(this.analyser.fftSize);
